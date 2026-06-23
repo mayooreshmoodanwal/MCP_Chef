@@ -12,6 +12,7 @@ from mcp.server.fastmcp import FastMCP
 # All tools across the project register against this single instance
 mcp = FastMCP(
     "codechef-mcp",
+    host="0.0.0.0",
     instructions="""
     CodeChef Contest MCP Server — AI-powered competitive programming assistant.
 
