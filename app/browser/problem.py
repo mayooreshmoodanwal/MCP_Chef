@@ -29,6 +29,16 @@ async def fetch_problem(contest_code: str, problem_code: str) -> dict:
     """
     url = f"{config.CODECHEF_API_URL}/contests/{contest_code}/problems/{problem_code}"
 
+    # Get cookies from authenticated browser session
+    from app.browser.login import get_browser_context
+    try:
+        context = await get_browser_context()
+        playwright_cookies = await context.cookies()
+        cookies = {c["name"]: c["value"] for c in playwright_cookies}
+    except Exception as e:
+        logger.error(f"Failed to get authenticated browser context for cookies: {e}")
+        cookies = {}
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
@@ -37,6 +47,7 @@ async def fetch_problem(contest_code: str, problem_code: str) -> dict:
                     "User-Agent": "CodeChef-MCP/1.0",
                     "Accept": "application/json",
                 },
+                cookies=cookies,
                 timeout=30.0,
             )
             response.raise_for_status()
@@ -45,6 +56,36 @@ async def fetch_problem(contest_code: str, problem_code: str) -> dict:
             # Parse HTML problem body
             problem_html = data.get("body", "")
             problem_text = _html_to_text(problem_html)
+
+            # Check if it returned a placeholder/unauthorized statement
+            if (
+                "example problem statement in markdown" in problem_text.lower()
+                or data.get("submit_error") == "You need to login to submit."
+            ):
+                logger.warning(
+                    f"Detected placeholder or unauthorized statement for {problem_code}. "
+                    "Retrying after forcing a fresh login..."
+                )
+                from app.browser import login
+                login._browser_context = None  # Force re-login
+
+                context = await get_browser_context()
+                playwright_cookies = await context.cookies()
+                cookies = {c["name"]: c["value"] for c in playwright_cookies}
+
+                response = await client.get(
+                    url,
+                    headers={
+                        "User-Agent": "CodeChef-MCP/1.0",
+                        "Accept": "application/json",
+                    },
+                    cookies=cookies,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+                problem_html = data.get("body", "")
+                problem_text = _html_to_text(problem_html)
 
             # Extract sample test cases
             sample_inputs, sample_outputs = _extract_samples(problem_html)

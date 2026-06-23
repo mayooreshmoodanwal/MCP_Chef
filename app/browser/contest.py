@@ -24,6 +24,16 @@ async def fetch_contest_details(contest_code: str) -> dict:
     """
     url = f"{config.CODECHEF_API_URL}/contests/{contest_code}"
 
+    # Get cookies from authenticated browser session
+    from app.browser.login import get_browser_context
+    try:
+        context = await get_browser_context()
+        playwright_cookies = await context.cookies()
+        cookies = {c["name"]: c["value"] for c in playwright_cookies}
+    except Exception as e:
+        logger.error(f"Failed to get authenticated browser context for cookies: {e}")
+        cookies = {}
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
@@ -32,6 +42,7 @@ async def fetch_contest_details(contest_code: str) -> dict:
                     "User-Agent": "CodeChef-MCP/1.0",
                     "Accept": "application/json",
                 },
+                cookies=cookies,
                 timeout=30.0,
             )
             response.raise_for_status()
